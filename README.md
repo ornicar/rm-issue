@@ -60,6 +60,6 @@ sbt "runMain Minimal"
 32
 ```
 
-Now, here where it gets fun. You'll see it the first time you run the experiment.
+Now, here where it gets fun. It might happen at the 30s mark. Or it might be later - probably on a multiple of 30.
 
-Then the next times, you won't. Why? I don't know.
+IDK yet why.
