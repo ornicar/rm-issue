@@ -1,46 +1,50 @@
 import scala.concurrent.*
 import scala.concurrent.duration.*
 import reactivemongo.api.*
-import reactivemongo.api.bson.BSONDocument
+import reactivemongo.api.bson.*
 
 object Blast extends App:
+  run
+
+def run =
+
   given ExecutionContext = scala.concurrent.ExecutionContext.global
 
   val driver = new AsyncDriver
 
-  val timeout = 2.seconds
   val options = MongoConnectionOptions.default
   println(options)
   println(options.maxNonQueryableHeartbeats)
-  val connection =
-    Await.result(driver.connect(List("localhost:27017"), options), timeout)
-  val db = Await.result(connection.database("test-rm"), timeout)
-  val coll = db("test-rm1")
 
-  val prepare =
-    for
-      _ <- coll.delete.one(BSONDocument())
-      _ <- coll.insert.one(BSONDocument("i" -> 1))
-    // the line above causes:
-    // java.lang.NoClassDefFoundError: Could not initialize class Blast$
-    // at Blast$.coll(blast.scala:18)
-    // ????????!!!!!1!!1
-    // and the test-rm db is not created
-    yield ()
-
-  Await.result(prepare, 3.seconds)
-  println(coll)
+  val colls = (1 to 3).toList map { i =>
+    Await.result(
+      for
+        conn <- driver.connect(List("localhost:27017"), options)
+        db <- conn.database(s"test-rm-$i")
+        coll = db(s"test-rm-$i")
+        _ <- coll.delete.one(BSONDocument())
+        _ <- coll.insert.many(
+          (1 to 1000).toList.map(i => BSONDocument("i" -> i))
+        )
+      yield coll,
+      3.seconds
+    )
+  }
 
   // val c = Await.result(coll, duration.Duration.Inf)
   // println(c)
 
-  for i <- 0 to 2 do
+  def doStuff(coll: collection.BSONCollection): Future[Unit] =
     coll
       .find(BSONDocument())
       .cursor[BSONDocument]()
       .collect[List](-1, Cursor.FailOnError[List[BSONDocument]]())
       .map(_.size)
-      .onComplete(println)
+      .flatMap(_ => doStuff(coll))
+
+  colls.map(doStuff)
+
+  for i <- 0 to 32 do
     println(i)
     Thread sleep 1000
 
