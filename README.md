@@ -60,6 +60,6 @@ sbt "runMain Minimal"
 32
 ```
 
-Now, here where it gets fun. It might happen at the 30s mark. Or it might be later - probably on a multiple of 30.
+Now, here where it gets fun. It might happen at the 30s mark. Or it might be later.
 
 IDK yet why.
