@@ -8,38 +8,35 @@ import akka.stream.*
 import akka.stream.scaladsl.{Sink, Source}
 
 object Stream:
-  def main(args: Array[String]): Unit =
-    letsgo(args(0), args(1))
+  def main(args: Array[String]): Unit = args match
+    case Array(uri, db) => letsgo(uri, db)
+    case _              => println("Usage: <uri> <db>")
 
   def letsgo(uri: String, dbName: String) =
     given ec: ExecutionContext = scala.concurrent.ExecutionContext.global
-    val driver = new AsyncDriver
 
-    val db = Await.result(
-      for
-        parsedUri <- MongoConnection.fromString(uri)
-        conn <- driver.connect(parsedUri)
-        db <- conn.database(dbName)
-      yield db,
-      3.seconds
-    )
+    given system: ActorSystem =
+      ActorSystem(name = "rmtest", defaultExecutionContext = Some(ec))
 
-    implicit val system: ActorSystem = ActorSystem(
-      name = "akkastream-cursor",
-      defaultExecutionContext = Some(ec)
-    )
+    given Materializer = ActorMaterializer.create(system)
 
-    implicit val materializer: Materializer = ActorMaterializer.create(system)
-
-    val stream = db("user4")
+    def stream(coll: collection.BSONCollection) = coll
       .find(BSONDocument(), Some(BSONDocument("username" -> true)))
       .cursor[BSONDocument]()
-      .documentSource(500)
+      .documentSource(5000)
       .mapConcat(d => d.string("username").toList)
       .zipWithIndex
-      .throttle(30, 1.second)
+      .throttle(50, 1.second)
       .runWith(Sink.foreach((u, i) => println(s"$i $u")))
 
-    Await.result(stream, 30.seconds)
+    val run = for
+      parsedUri <- MongoConnection.fromString(uri)
+      driver = new AsyncDriver
+      conn <- driver.connect(parsedUri)
+      db <- conn.database(dbName)
+      _ <- stream(db("user4"))
+      _ <- driver.close()
+      _ <- system.terminate()
+    yield ()
 
-    driver.close()
+    Await.result(run, 300.seconds)
