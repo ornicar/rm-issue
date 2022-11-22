@@ -22,7 +22,7 @@ object Stream:
 
     def stream(coll: collection.BSONCollection) = coll
       .find(BSONDocument(), Some(BSONDocument("username" -> true)))
-      .cursor[BSONDocument]()
+      .cursor[BSONDocument](ReadPreference.secondaryPreferred)
       .documentSource(5000)
       .mapConcat(d => d.string("username").toList)
       .zipWithIndex
