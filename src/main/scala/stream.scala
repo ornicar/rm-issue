@@ -12,7 +12,7 @@ object Stream:
     case Array(uri, db) => letsgo(uri, db)
     case _              => println("Usage: <uri> <db>")
 
-  def letsgo(uri: String, dbName: String) =
+  def letsgo(uri: String, dbName: String, collName: String = "rmbug2") =
     given ec: ExecutionContext = scala.concurrent.ExecutionContext.global
 
     given system: ActorSystem =
@@ -20,21 +20,25 @@ object Stream:
 
     given Materializer = ActorMaterializer.create(system)
 
+    val nbDocs = 2000
+
     def stream(coll: collection.BSONCollection) = coll
-      .find(BSONDocument(), Some(BSONDocument("username" -> true)))
-      .cursor[BSONDocument](ReadPreference.secondaryPreferred)
-      .documentSource(5000)
-      .mapConcat(d => d.string("username").toList)
-      .zipWithIndex
+      .find(BSONDocument(), Some(BSONDocument("_id" -> true)))
+      .cursor[BSONDocument](ReadPreference.secondary)
+      .documentSource(nbDocs)
+      .mapConcat(d => d.int("_id").toList)
       .throttle(50, 1.second)
-      .runWith(Sink.foreach((u, i) => println(s"$i $u")))
+      .runWith(Sink.foreach(println))
 
     val run = for
       parsedUri <- MongoConnection.fromString(uri)
       driver = new AsyncDriver
       conn <- driver.connect(parsedUri)
       db <- conn.database(dbName)
-      _ <- stream(db("user4"))
+      coll = db(collName)
+      _ <- coll.delete.one(BSONDocument())
+      _ <- coll.insert.many((1 to nbDocs).map(i => BSONDocument("_id" -> i)))
+      _ <- stream(db(collName))
       _ <- driver.close()
       _ <- system.terminate()
     yield ()
