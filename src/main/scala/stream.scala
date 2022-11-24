@@ -5,7 +5,7 @@ import reactivemongo.api.bson.*
 import reactivemongo.akkastream.{State, cursorProducer}
 import akka.actor.*
 import akka.stream.*
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.scaladsl.*
 
 object Stream:
   def main(args: Array[String]): Unit = args match
@@ -49,7 +49,7 @@ object Stream:
       300.seconds
     )
 
-  def testPrimary(uri: String, dbName: String, nbDocs: Int = 2_000) =
+  def testPrimary(uri: String, dbName: String, nbDocs: Int = 200_000) =
     given ec: ExecutionContext = scala.concurrent.ExecutionContext.global
     given system: ActorSystem =
       ActorSystem(name = "rmtest", defaultExecutionContext = Some(ec))
@@ -57,12 +57,16 @@ object Stream:
     Await.result(
       for
         (driver, coll) <- connectAndInsert(uri, dbName, nbDocs)
-        _ <- coll
+        nb <- coll
           .find(BSONDocument(), Some(BSONDocument("_id" -> true)))
           .cursor[BSONDocument](ReadPreference.primary)
           .documentSource(nbDocs)
-          .mapConcat(d => d.int("_id").toList)
-          .runWith(Sink.foreach(println))
+          .toMat(Sink.fold[Int, BSONDocument](0) { case (total, doc) =>
+            println(s"$total ${doc int "_id"}")
+            total + 1
+          })(Keep.right)
+          .run()
+        _ = println(s"Done: $nb")
         _ <- driver.close()
         _ <- system.terminate()
       yield (),
